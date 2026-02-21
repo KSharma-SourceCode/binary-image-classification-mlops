@@ -19,3 +19,7 @@ mlruns/
 # OS
 .DS_Store
 Thumbs.db
+
+# Models
+models/
+*.h5
