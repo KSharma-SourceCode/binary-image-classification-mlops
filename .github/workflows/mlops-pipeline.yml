@@ -29,11 +29,14 @@ jobs:
     # ==========================
     - name: Install dependencies
       run: |
+        pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Install DVC
-      run: |
-        pip install dvc[s3]
+    #- name: Install DVC
+    #  run: |
+    #    pip install dvc[s3]
+    - name: Fix pathspec issue
+      run: pip install pathspec==0.12.1
 
     - name: Pull dataset from DVC (S3)
       env:

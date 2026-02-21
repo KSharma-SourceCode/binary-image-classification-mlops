@@ -36,3 +36,6 @@ Thumbs.db
 models/
 *.h5
 /data
+
+.dvc/*.json
+*.json
