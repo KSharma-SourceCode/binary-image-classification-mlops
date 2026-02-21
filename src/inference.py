@@ -37,7 +37,12 @@ REQUEST_COUNT = 0
 # ==========================
 app = FastAPI(title="Cats vs Dogs Inference API")
 
-prod_version = get_latest_version("models/prod")
+BASE_PATH = "models/prod"
+if os.path.exists(BASE_PATH):
+    prod_version = get_latest_version(BASE_PATH)
+else:
+    prod_version = None
+
 MODEL_PATH = f"models/prod/{prod_version}/model.h5"
 model = tf.keras.models.load_model(MODEL_PATH)
 
