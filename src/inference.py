@@ -6,45 +6,102 @@ import time
 import logging
 
 from fastapi import FastAPI, UploadFile, File
-from PIL import Image
-from src.versioning import get_latest_version
-from prometheus_client import Counter, Histogram, generate_latest
 from fastapi.responses import Response
+from PIL import Image
+
+from src.versioning import get_latest_version
 from src.performance_tracking import (
     log_prediction,
     get_performance_summary
 )
 
-# ==========================
-# METRICS
-# ==========================
-REQUEST_COUNTER = Counter(
-    "prediction_requests_total",
-    "Total number of prediction requests"
+from prometheus_client import (
+    Counter,
+    Histogram,
+    generate_latest,
+    REGISTRY
 )
 
-PREDICTION_LATENCY = Histogram(
-    "prediction_latency_seconds",
-    "Latency of prediction requests"
-)
-
+# ==========================
+# LOGGING
+# ==========================
 logging.basicConfig(level=logging.INFO)
+
+# ==========================
+# SAFE METRICS (pytest-safe)
+# ==========================
+def get_or_create_counter():
+    try:
+        return Counter(
+            "prediction_requests_total",
+            "Total number of prediction requests"
+        )
+    except ValueError:
+        return REGISTRY._names_to_collectors["prediction_requests_total"]
+
+
+def get_or_create_histogram():
+    try:
+        return Histogram(
+            "prediction_latency_seconds",
+            "Latency of prediction requests"
+        )
+    except ValueError:
+        return REGISTRY._names_to_collectors["prediction_latency_seconds"]
+
+
+REQUEST_COUNTER = get_or_create_counter()
+PREDICTION_LATENCY = get_or_create_histogram()
 
 REQUEST_COUNT = 0
 
 # ==========================
-# APP & MODEL
+# APP
 # ==========================
 app = FastAPI(title="Cats vs Dogs Inference API")
 
+# ==========================
+# MODEL LOADING (SAFE)
+# ==========================
 BASE_PATH = "models/prod"
-if os.path.exists(BASE_PATH):
-    prod_version = get_latest_version(BASE_PATH)
-else:
-    prod_version = None
+model = None
+prod_version = None
 
-MODEL_PATH = f"models/prod/{prod_version}/model.h5"
-model = tf.keras.models.load_model(MODEL_PATH)
+
+def load_model_if_available():
+    """
+    Lazy-load model safely.
+    Prevents crashes during pytest / CI.
+    """
+    global model, prod_version
+
+    if model is not None:
+        return model
+
+    if not os.path.exists(BASE_PATH):
+        logging.warning("models/prod does not exist")
+        return None
+
+    if not os.listdir(BASE_PATH):
+        logging.warning("models/prod is empty")
+        return None
+
+    prod_version = get_latest_version(BASE_PATH)
+
+    if prod_version is None:
+        logging.warning("No model version found")
+        return None
+
+    model_path = f"{BASE_PATH}/{prod_version}/model.h5"
+
+    if not os.path.exists(model_path):
+        logging.warning(f"Model file not found: {model_path}")
+        return None
+
+    logging.info(f"Loading model: {model_path}")
+    model = tf.keras.models.load_model(model_path)
+    return model
+
 
 # ==========================
 # HELPERS
@@ -55,36 +112,44 @@ def preprocess(image_bytes):
     img = np.array(img) / 255.0
     return np.expand_dims(img, axis=0)
 
+
 # ==========================
 # ROUTES
 # ==========================
 @app.get("/health")
 def health():
-    return {"status": "healthy", "model_version": prod_version}
+    return {
+        "status": "healthy",
+        "model_version": prod_version
+    }
 
 
 @app.post("/predict")
 async def predict(
     file: UploadFile = File(...),
-    true_label: str = None   # simulated ground truth
+    true_label: str = None
 ):
     global REQUEST_COUNT
+
+    loaded_model = load_model_if_available()
+
+    if loaded_model is None:
+        return {"error": "Model not available"}
 
     image_bytes = await file.read()
 
     start = time.time()
+
     with PREDICTION_LATENCY.time():
         image = preprocess(image_bytes)
-        prob = model.predict(image)[0][0]
+        prob = loaded_model.predict(image)[0][0]
 
     latency = time.time() - start
     REQUEST_COUNT += 1
 
     label = "dog" if prob > 0.5 else "cat"
 
-    # ==========================
-    # PERFORMANCE TRACKING
-    # ==========================
+    # performance tracking
     if true_label is not None:
         log_prediction(true_label, label, float(prob))
 
@@ -105,17 +170,11 @@ async def predict(
 
 @app.get("/performance")
 def performance():
-    """
-    Returns post-deployment model performance
-    based on logged predictions.
-    """
     return get_performance_summary()
+
 
 @app.get("/metrics")
 def metrics():
-    """
-    Exposes Prometheus metrics for scraping.
-    """
     return Response(
         generate_latest(),
         media_type="text/plain; version=0.0.4"
