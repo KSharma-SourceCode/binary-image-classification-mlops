@@ -1,0 +1,79 @@
+name: MLOps Multi-Branch Pipeline
+
+on:
+  push:
+    branches: [development, main]
+
+jobs:
+  mlops:
+    runs-on: ubuntu-latest
+
+    steps:
+
+    # ==========================
+    # Checkout Repository
+    # ==========================
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # ==========================
+    # Setup Python
+    # ==========================
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+
+    # ==========================
+    # Install Dependencies
+    # ==========================
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+
+    # ==========================
+    # Run Unit Tests
+    # ==========================
+    - name: Run tests with coverage
+      run: |
+        pytest --cov=src tests/
+        pytest -W ignore::DeprecationWarning -v --cov=src tests/
+
+    # ==========================
+    # Train + Evaluate (DEV)
+    # ==========================
+    - name: Train model (development)
+      if: github.ref == 'refs/heads/development'
+      run: |
+        python -m src.train
+
+    - name: Evaluate model
+      if: github.ref == 'refs/heads/development'
+      run: |
+        python -m src.evaluate
+
+    - name: Promote model
+      if: github.ref == 'refs/heads/development'
+      run: |
+        python -m src.promote
+
+    # ==========================
+    # Docker Login
+    # ==========================
+    - name: Docker Login
+      run: |
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+    # ==========================
+    # Build Docker Image
+    # ==========================
+    - name: Build Docker image
+      run: |
+        docker build -t ${{ secrets.DOCKER_USERNAME }}/binary-image-classification-mlops:${{ github.run_number }} .
+
+    # ==========================
+    # Push Docker Image
+    # ==========================
+    - name: Push Docker image
+      run: |
+        docker push ${{ secrets.DOCKER_USERNAME }}/binary-image-classification-mlops:${{ github.run_number }}
