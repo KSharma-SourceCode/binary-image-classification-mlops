@@ -1,9 +1,11 @@
-import os
 import io
 import numpy as np
 import tensorflow as tf
 import time
 import logging
+import os
+import pandas as pd
+from datetime import datetime
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import Response
@@ -59,6 +61,26 @@ REQUEST_COUNT = 0
 # APP
 # ==========================
 app = FastAPI(title="Cats vs Dogs Inference API")
+
+def log_prediction(true_label, prediction, confidence):
+
+    os.makedirs("logs", exist_ok=True)
+
+    row = {
+        "timestamp": datetime.now().isoformat(),
+        "true_label": true_label if true_label else "unknown",
+        "prediction": prediction,
+        "confidence": confidence
+    }
+
+    df = pd.DataFrame([row])
+
+    file_path = "logs/predictions.csv"
+
+    if os.path.exists(file_path):
+        df.to_csv(file_path, mode="a", header=False, index=False)
+    else:
+        df.to_csv(file_path, index=False)
 
 # ==========================
 # MODEL LOADING (SAFE)
@@ -149,9 +171,12 @@ async def predict(
 
     label = "dog" if prob > 0.5 else "cat"
 
-    # performance tracking
-    if true_label is not None:
-        log_prediction(true_label, label, float(prob))
+    # performance tracking (always log prediction)
+    log_prediction(
+        true_label if true_label is not None else "unknown",
+        label,
+        float(prob)
+    )
 
     logging.info(
         f"Prediction | latency={latency:.3f}s | requests={REQUEST_COUNT}"
@@ -179,3 +204,4 @@ def metrics():
         generate_latest(),
         media_type="text/plain; version=0.0.4"
     )
+
