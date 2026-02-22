@@ -30,7 +30,6 @@ Thumbs.db
 
 # Models
 models/**/model.h5
-models/**/model.*.dvc
 
 .dvc/*.json
 *.json
