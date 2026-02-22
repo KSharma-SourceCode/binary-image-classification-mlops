@@ -23,8 +23,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y \
-    glib2 \
-    mesa-libGL \
+    libglib2.0-0 \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # =========================
@@ -39,7 +39,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ src/
 COPY models/ models/
 COPY configs/ configs/
-
+COPY . .
 # =========================
 # Expose Port
 # =========================
