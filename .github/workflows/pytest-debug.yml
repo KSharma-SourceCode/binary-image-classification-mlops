@@ -56,9 +56,9 @@ jobs:
           ls -la tests
 
       # Collect tests
-      - name: Collect tests
+      - name: Collect Tests
         run: pytest --collect-only -q
 
       # Run tests
       - name: Run pytest
-        run: pytest --maxfail=1 --disable-warnings -v
+        run: pytest --maxfail=1 --disable-warnings -W ignore::DeprecationWarning -v --cov=src tests/

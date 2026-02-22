@@ -22,6 +22,11 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && apt-get install -y \
+    glib2 \
+    mesa-libGL \
+    && rm -rf /var/lib/apt/lists/*
+
 # =========================
 # Python Dependencies
 # =========================
