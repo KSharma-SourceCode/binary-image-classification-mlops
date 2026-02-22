@@ -169,7 +169,7 @@ async def predict(
     latency = time.time() - start
     REQUEST_COUNT += 1
 
-    label = "dog" if prob > 0.5 else "cat"
+    label = "cat" if prob > 0.5 else "dog"
 
     # performance tracking (always log prediction)
     log_prediction(
