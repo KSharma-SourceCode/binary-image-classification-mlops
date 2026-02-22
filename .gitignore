@@ -5,10 +5,6 @@ venv/
 
 # Data
 data/raw/
-data/processed/
-
-# Models
-models/*.h5
 
 # MLflow
 mlruns/
@@ -33,9 +29,7 @@ mlflow.db
 Thumbs.db
 
 # Models
-models/
-*.h5
-/data
+models/**/model.h5
 
 .dvc/*.json
 *.json
