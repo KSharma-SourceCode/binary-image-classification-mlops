@@ -44,7 +44,7 @@ def get_performance_summary():
         }
 
     total = len(df)
-    correct = (df["true_label"] == df["prediction"]).sum()
+    correct = (df["true_label"] == df["predicted_label"]).sum()
     accuracy = correct / total
 
     return {

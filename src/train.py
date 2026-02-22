@@ -17,18 +17,39 @@ def load_data(env, version):
     data = np.load(f"data/processed/{env}/{version}/dataset.npz")
     return data["X_train"], data["y_train"], data["X_val"], data["y_val"]
 
+import tensorflow as tf
+from tensorflow.keras import layers, models
+
 def build_model():
-    model = Sequential([
-        Conv2D(32, 3, activation="relu", input_shape=(224,224,3)),
-        MaxPooling2D(),
-        Conv2D(64, 3, activation="relu"),
-        MaxPooling2D(),
-        Flatten(),
-        Dense(128, activation="relu"),
-        Dropout(0.5),
-        Dense(1, activation="sigmoid")
+
+    # ===============================
+    # PRETRAINED BACKBONE
+    # ===============================
+    base_model = tf.keras.applications.MobileNetV2(
+        input_shape=(224, 224, 3),
+        include_top=False,
+        weights="imagenet"
+    )
+
+    # Freeze pretrained layers
+    base_model.trainable = False
+
+    # ===============================
+    # CLASSIFICATION HEAD
+    # ===============================
+    model = models.Sequential([
+        base_model,
+        layers.GlobalAveragePooling2D(),
+        layers.Dropout(0.3),
+        layers.Dense(1, activation="sigmoid")
     ])
-    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
+
+    model.compile(
+        optimizer="adam",
+        loss="binary_crossentropy",
+        metrics=["accuracy"]
+    )
+
     return model
 
 def train(config_path):

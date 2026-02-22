@@ -4,16 +4,15 @@ import tensorflow as tf
 import time
 import logging
 import os
+import cv2
 import pandas as pd
 from datetime import datetime
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import Response
-from PIL import Image
 
 from src.versioning import get_latest_version
 from src.performance_tracking import (
-    log_prediction,
     get_performance_summary
 )
 
@@ -62,6 +61,9 @@ REQUEST_COUNT = 0
 # ==========================
 app = FastAPI(title="Cats vs Dogs Inference API")
 
+# ==========================
+# LOGGING PREDICTIONS
+# ==========================
 def log_prediction(true_label, prediction, confidence):
 
     os.makedirs("logs", exist_ok=True)
@@ -70,7 +72,7 @@ def log_prediction(true_label, prediction, confidence):
         "timestamp": datetime.now().isoformat(),
         "true_label": true_label if true_label else "unknown",
         "prediction": prediction,
-        "confidence": confidence
+        "confidence": float(confidence)
     }
 
     df = pd.DataFrame([row])
@@ -82,8 +84,9 @@ def log_prediction(true_label, prediction, confidence):
     else:
         df.to_csv(file_path, index=False)
 
+
 # ==========================
-# MODEL LOADING (SAFE)
+# MODEL LOADING
 # ==========================
 BASE_PATH = "models/prod"
 model = None
@@ -126,13 +129,22 @@ def load_model_if_available():
 
 
 # ==========================
-# HELPERS
+# PREPROCESS (MATCH TRAINING)
 # ==========================
 def preprocess(image_bytes):
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    img = img.resize((224, 224))
-    img = np.array(img) / 255.0
+    """
+    Match training preprocessing:
+    - Decode with OpenCV (BGR)
+    - Resize to 224x224
+    - Normalize to float32 [0,1]
+    - Add batch dimension
+    """
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)  # BGR
+    img = cv2.resize(img, (224, 224))
+    img = img.astype(np.float32) / 255.0
     return np.expand_dims(img, axis=0)
+
 
 
 # ==========================
@@ -140,6 +152,8 @@ def preprocess(image_bytes):
 # ==========================
 @app.get("/health")
 def health():
+    load_model_if_available()
+
     return {
         "status": "healthy",
         "model_version": prod_version
@@ -169,9 +183,14 @@ async def predict(
     latency = time.time() - start
     REQUEST_COUNT += 1
 
-    label = "cat" if prob > 0.5 else "dog"
+    # ==========================
+    # LABEL MAPPING (CORRECT)
+    # cats = 0, dogs = 1
+    # ==========================
+    label = "dog" if prob > 0.5 else "cat"
+    #label = "cat" if prob > 0.5 else "dog"
 
-    # performance tracking (always log prediction)
+    # log prediction always
     log_prediction(
         true_label if true_label is not None else "unknown",
         label,
@@ -179,7 +198,8 @@ async def predict(
     )
 
     logging.info(
-        f"Prediction | latency={latency:.3f}s | requests={REQUEST_COUNT}"
+        f"Prediction | label={label} | prob={prob:.3f} "
+        f"| latency={latency:.3f}s | requests={REQUEST_COUNT}"
     )
 
     REQUEST_COUNTER.inc()
@@ -204,4 +224,3 @@ def metrics():
         generate_latest(),
         media_type="text/plain; version=0.0.4"
     )
-
